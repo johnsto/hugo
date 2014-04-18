@@ -10,6 +10,9 @@ title: Release Notes
 weight: 10
 ---
 
+## Next release
+  * Added section Prev/Next pointers.
+
 ## **0.11.0** May 28, 2014
   * Considerably faster... about 3 - 4x faster on average
   * [Live Reload](/extras/livereload). Hugo will automatically reload the browser when the build is complete
