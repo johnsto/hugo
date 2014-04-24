@@ -31,7 +31,7 @@ import (
 	"github.com/spf13/hugo/template/bundle"
 	jww "github.com/spf13/jwalterweatherman"
 	"github.com/spf13/viper"
-	"github.com/theplant/blackfriday"
+	"github.com/russross/blackfriday"
 	"launchpad.net/goyaml"
 	json "launchpad.net/rjson"
 )
@@ -543,7 +543,6 @@ func (page *Page) Convert() error {
 
 func markdownRender(content []byte) []byte {
 	htmlFlags := 0
-	htmlFlags |= blackfriday.HTML_SKIP_SCRIPT
 	htmlFlags |= blackfriday.HTML_USE_XHTML
 	htmlFlags |= blackfriday.HTML_USE_SMARTYPANTS
 	htmlFlags |= blackfriday.HTML_SMARTYPANTS_FRACTIONS
@@ -557,13 +556,13 @@ func markdownRender(content []byte) []byte {
 	extensions |= blackfriday.EXTENSION_AUTOLINK
 	extensions |= blackfriday.EXTENSION_STRIKETHROUGH
 	extensions |= blackfriday.EXTENSION_SPACE_HEADERS
+	extensions |= blackfriday.EXTENSION_HEADER_IDS
 
 	return blackfriday.Markdown(content, renderer, extensions)
 }
 
 func markdownRenderWithTOC(content []byte) []byte {
 	htmlFlags := 0
-	htmlFlags |= blackfriday.HTML_SKIP_SCRIPT
 	htmlFlags |= blackfriday.HTML_TOC
 	htmlFlags |= blackfriday.HTML_USE_XHTML
 	htmlFlags |= blackfriday.HTML_USE_SMARTYPANTS
@@ -578,6 +577,7 @@ func markdownRenderWithTOC(content []byte) []byte {
 	extensions |= blackfriday.EXTENSION_AUTOLINK
 	extensions |= blackfriday.EXTENSION_STRIKETHROUGH
 	extensions |= blackfriday.EXTENSION_SPACE_HEADERS
+	extensions |= blackfriday.EXTENSION_HEADER_IDS
 
 	return blackfriday.Markdown(content, renderer, extensions)
 }
