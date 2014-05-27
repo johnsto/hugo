@@ -24,12 +24,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/russross/blackfriday"
 	"github.com/spf13/cast"
 	"github.com/spf13/hugo/helpers"
 	"github.com/spf13/hugo/parser"
 	jww "github.com/spf13/jwalterweatherman"
 	"github.com/spf13/viper"
-	"github.com/theplant/blackfriday"
 )
 
 type Page struct {
