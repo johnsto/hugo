@@ -28,10 +28,22 @@ type Node struct {
 	Keywords    []string
 	Params      map[string]interface{}
 	Date        time.Time
+	Sitemap     Sitemap
 	UrlPath
 }
 
-func (n Node) RSSlink() template.HTML {
+func (n *Node) Now() time.Time {
+	return time.Now()
+}
+
+func (n *Node) HasMenuCurrent(menu string, me *MenuEntry) bool {
+	return false
+}
+func (n *Node) IsMenuCurrent(menu string, me *MenuEntry) bool {
+	return false
+}
+
+func (n *Node) RSSlink() template.HTML {
 	return n.RSSLink
 }
 

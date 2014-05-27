@@ -2,8 +2,10 @@
 title: "Release Notes"
 date: "2013-07-01"
 aliases: ["/doc/release-notes/"]
-groups: ["meta"]
-groups_weight: 10
+weight: 10
+menu:
+  right:
+    parent: 'meta'
 ---
 ## Next release
   * Added section Prev/Next pointers.

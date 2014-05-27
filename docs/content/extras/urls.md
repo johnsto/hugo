@@ -3,9 +3,11 @@ title: "URLs"
 date: "2014-01-03"
 aliases:
   - "/doc/urls/"
-groups: ["extras"]
-groups_weight: 40
+weight: 40
 notoc: true
+menu:
+  main:
+    parent: 'extras'
 ---
 
 ## Pretty Urls
@@ -22,7 +24,7 @@ ability to create your entire site with ugly urls. Simply use the
 
 If you want a specific piece of content to have an exact url you can
 specify this in the front matter under the url key. See [Content
-Organization](content/organization/) for more details. 
+Organization](/content/organization/) for more details. 
 
 ## Canonicalization
 

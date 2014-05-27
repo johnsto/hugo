@@ -2,8 +2,10 @@
 title: "Contributing to Hugo"
 date: "2013-07-01"
 aliases: ["/doc/contributing/", "/meta/contributing/"]
-groups: ["community"]
-groups_weight: 30
+weight: 30
+menu:
+  main:
+    parent: 'community'
 ---
 
 We welcome all contributions. Feel free to pick something from the roadmap
@@ -47,7 +49,7 @@ of the following paths:
 ## Running Hugo
 
     cd /path/to/hugo
-    go install github.com/spf13/hugo/hugolibs
+    go install github.com/spf13/hugo/hugo
     go run main.go
 
 ## Building Hugo

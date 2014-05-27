@@ -2,14 +2,16 @@
 title: "Source Directory Organization"
 date: "2013-07-01"
 aliases: ["/doc/source-directory/"]
-groups: ['gettingStarted']
-groups_weight: 50
+weight: 50
 notoc: true
+menu:
+  main:
+    parent: 'getting started'
 ---
 
 Hugo takes a single directory and uses it as the input for creating a complete website.
 
-Hugo has a very small amount of configuration, while remaining highly customizable. 
+Hugo has a very small amount of configuration, while remaining highly customizable.
 It accomplishes by assuming that you will only provide templates with the intent of
 using them.
 
@@ -46,7 +48,8 @@ An example directory may look like:
     |   |   ├── vimeo.html
     |   |   └── youtube.html
     |   ├── index.html
-    |   └── rss.xml
+    |   ├── rss.xml
+    |   └── sitemap.xml
     └── static
 
 This directory structure tells us a lot about this site:

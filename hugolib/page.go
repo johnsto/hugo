@@ -24,36 +24,35 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/spf13/cast"
 	"github.com/spf13/hugo/helpers"
 	"github.com/spf13/hugo/parser"
-	"github.com/spf13/hugo/template/bundle"
 	jww "github.com/spf13/jwalterweatherman"
 	"github.com/spf13/viper"
-	"github.com/russross/blackfriday"
-	"launchpad.net/goyaml"
-	json "launchpad.net/rjson"
+	"github.com/theplant/blackfriday"
 )
 
 type Page struct {
-	Status          string
-	Images          []string
-	rawContent      []byte
-	Content         template.HTML
-	Summary         template.HTML
-	TableOfContents template.HTML
-	Truncated       bool
-	plain           string // TODO should be []byte
-	Params          map[string]interface{}
-	contentType     string
-	Draft           bool
-	Aliases         []string
-	Tmpl            bundle.Template
-	Markup          string
-	renderable      bool
-	layout          string
-	linkTitle       string
+	Status            string
+	Images            []string
+	rawContent        []byte
+	Content           template.HTML
+	Summary           template.HTML
+	TableOfContents   template.HTML
+	Truncated         bool
+	plain             string // TODO should be []byte
+	Params            map[string]interface{}
+	contentType       string
+	Draft             bool
+	Aliases           []string
+	Tmpl              Template
+	Markup            string
+	renderable        bool
+	layout            string
+	linkTitle         string
+	frontmatter       []byte
+	sourceFrontmatter []byte
+	sourceContent     []byte
 	PageMeta
 	File
 	Position
@@ -72,8 +71,8 @@ type PageMeta struct {
 }
 
 type Position struct {
-	Prev *Page
-	Next *Page
+	Prev          *Page
+	Next          *Page
 	PrevInSection *Page
 	NextInSection *Page
 }
@@ -141,12 +140,10 @@ func renderBytes(content []byte, pagefmt string) []byte {
 	}
 }
 
-// TODO abstract further to support loading from more
-// than just files on disk. Should load reader (file, []byte)
 func newPage(filename string) *Page {
 	page := Page{contentType: "",
 		File:   File{FileName: filename, Extension: "html"},
-		Node:   Node{Keywords: []string{}},
+		Node:   Node{Keywords: []string{}, Sitemap: Sitemap{Priority: -1}},
 		Params: make(map[string]interface{})}
 
 	jww.DEBUG.Println("Reading from", page.File.FileName)
@@ -161,15 +158,7 @@ func (p *Page) IsRenderable() bool {
 
 func (p *Page) guessSection() {
 	if p.Section == "" {
-		x := strings.Split(p.FileName, "/")
-		x = x[:len(x)-1]
-		if len(x) == 0 {
-			return
-		}
-		if x[0] == "content" {
-			x = x[1:]
-		}
-		p.Section = path.Join(x...)
+		p.Section = helpers.GuessSection(p.FileName)
 	}
 }
 
@@ -210,7 +199,17 @@ func layouts(types string, layout string) (layouts []string) {
 	return
 }
 
-func ReadFrom(buf io.Reader, name string) (page *Page, err error) {
+func NewPageFrom(buf io.Reader, name string) (page *Page, err error) {
+	p, err := NewPage(name)
+	if err != nil {
+		return p, err
+	}
+	err = p.ReadFrom(buf)
+
+	return p, err
+}
+
+func NewPage(name string) (page *Page, err error) {
 	if len(name) == 0 {
 		return nil, errors.New("Zero length page name")
 	}
@@ -218,6 +217,10 @@ func ReadFrom(buf io.Reader, name string) (page *Page, err error) {
 	// Create new page
 	p := newPage(name)
 
+	return p, nil
+}
+
+func (p *Page) ReadFrom(buf io.Reader) (err error) {
 	// Parse for metadata & body
 	if err = p.parse(buf); err != nil {
 		jww.ERROR.Print(err)
@@ -227,7 +230,7 @@ func ReadFrom(buf io.Reader, name string) (page *Page, err error) {
 	//analyze for raw stats
 	p.analyzePage()
 
-	return p, nil
+	return nil
 }
 
 func (p *Page) analyzePage() {
@@ -250,6 +253,7 @@ func (p *Page) permalink() (*url.URL, error) {
 
 	if override, ok := p.Site.Permalinks[p.Section]; ok {
 		permalink, err = override.Expand(p)
+
 		if err != nil {
 			return nil, err
 		}
@@ -295,36 +299,10 @@ func (p *Page) RelPermalink() (string, error) {
 	return link.String(), nil
 }
 
-func (page *Page) handleTomlMetaData(datum []byte) (interface{}, error) {
-	m := map[string]interface{}{}
-	datum = removeTomlIdentifier(datum)
-	if _, err := toml.Decode(string(datum), &m); err != nil {
-		return m, fmt.Errorf("Invalid TOML in %s \nError parsing page meta data: %s", page.FileName, err)
-	}
-	return m, nil
-}
-
-func removeTomlIdentifier(datum []byte) []byte {
-	return bytes.Replace(datum, []byte("+++"), []byte(""), -1)
-}
-
-func (page *Page) handleYamlMetaData(datum []byte) (interface{}, error) {
-	m := map[string]interface{}{}
-	if err := goyaml.Unmarshal(datum, &m); err != nil {
-		return m, fmt.Errorf("Invalid YAML in %s \nError parsing page meta data: %s", page.FileName, err)
-	}
-	return m, nil
-}
-
-func (page *Page) handleJsonMetaData(datum []byte) (interface{}, error) {
-	var f interface{}
-	if err := json.Unmarshal(datum, &f); err != nil {
-		return f, fmt.Errorf("Invalid JSON in %v \nError parsing page meta data: %s", page.FileName, err)
-	}
-	return f, nil
-}
-
 func (page *Page) update(f interface{}) error {
+	if f == nil {
+		return fmt.Errorf("no metadata found")
+	}
 	m := f.(map[string]interface{})
 
 	for k, v := range m {
@@ -366,6 +344,8 @@ func (page *Page) update(f interface{}) error {
 			}
 		case "status":
 			page.Status = cast.ToString(v)
+		case "sitemap":
+			page.Sitemap = parseSitemap(cast.ToStringMap(v))
 		default:
 			// If not one of the explicit values, store in Params
 			switch vv := v.(type) {
@@ -387,6 +367,8 @@ func (page *Page) update(f interface{}) error {
 						a[i] = cast.ToString(u)
 					}
 					page.Params[loki] = a
+				default:
+					page.Params[loki] = vv
 				}
 			}
 		}
@@ -419,26 +401,84 @@ func (page *Page) GetParam(key string) interface{} {
 	return nil
 }
 
-type frontmatterType struct {
-	markstart, markend []byte
-	parse              func([]byte) (interface{}, error)
-	includeMark        bool
+func (page *Page) HasMenuCurrent(menu string, me *MenuEntry) bool {
+	menus := page.Menus()
+
+	if m, ok := menus[menu]; ok {
+		if me.HasChildren() {
+			for _, child := range me.Children {
+				if child.IsEqual(m) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+
 }
 
-const YAML_DELIM = "---"
-const TOML_DELIM = "+++"
+func (page *Page) IsMenuCurrent(menu string, inme *MenuEntry) bool {
+	menus := page.Menus()
 
-func (page *Page) detectFrontMatter(mark rune) (f *frontmatterType) {
-	switch mark {
-	case '-':
-		return &frontmatterType{[]byte(YAML_DELIM), []byte(YAML_DELIM), page.handleYamlMetaData, false}
-	case '+':
-		return &frontmatterType{[]byte(TOML_DELIM), []byte(TOML_DELIM), page.handleTomlMetaData, false}
-	case '{':
-		return &frontmatterType{[]byte{'{'}, []byte{'}'}, page.handleJsonMetaData, true}
-	default:
-		return nil
+	if me, ok := menus[menu]; ok {
+		return me.IsEqual(inme)
 	}
+
+	return false
+}
+
+func (page *Page) Menus() PageMenus {
+	ret := PageMenus{}
+
+	if ms, ok := page.Params["menu"]; ok {
+		link, _ := page.Permalink()
+
+		me := MenuEntry{Name: page.LinkTitle(), Weight: page.Weight, Url: link}
+
+		// Could be the name of the menu to attach it to
+		mname, err := cast.ToStringE(ms)
+
+		if err == nil {
+			me.Menu = mname
+			ret[mname] = &me
+			return ret
+		}
+
+		// Could be an slice of strings
+		mnames, err := cast.ToStringSliceE(ms)
+
+		if err == nil {
+			for _, mname := range mnames {
+				me.Menu = mname
+				ret[mname] = &me
+				return ret
+			}
+		}
+
+		// Could be a structured menu entry
+		menus, err := cast.ToStringMapE(ms)
+
+		if err != nil {
+			jww.ERROR.Printf("unable to process menus for %q\n", page.Title)
+		}
+
+		for name, menu := range menus {
+			menuEntry := MenuEntry{Name: page.LinkTitle(), Url: link, Weight: page.Weight, Menu: name}
+			jww.DEBUG.Printf("found menu: %q, in %q\n", name, page.Title)
+
+			ime, err := cast.ToStringMapE(menu)
+			if err != nil {
+				jww.ERROR.Printf("unable to process menus for %q\n", page.Title)
+			}
+
+			menuEntry.MarshallMap(ime)
+			ret[name] = &menuEntry
+		}
+		return ret
+	}
+
+	return nil
 }
 
 func (p *Page) Render(layout ...string) template.HTML {
@@ -493,35 +533,94 @@ func guessType(in string) string {
 	return "unknown"
 }
 
+func (page *Page) detectFrontMatter() (f *parser.FrontmatterType) {
+	return parser.DetectFrontMatter(rune(page.frontmatter[0]))
+}
+
 func (page *Page) parse(reader io.Reader) error {
-	p, err := parser.ReadFrom(reader)
+	psr, err := parser.ReadFrom(reader)
 	if err != nil {
 		return err
 	}
 
-	page.renderable = p.IsRenderable()
-
-	front := p.FrontMatter()
-
-	if len(front) != 0 {
-		fm := page.detectFrontMatter(rune(front[0]))
-		meta, err := fm.parse(front)
+	page.renderable = psr.IsRenderable()
+	page.frontmatter = psr.FrontMatter()
+	meta, err := psr.Metadata()
+	if meta != nil {
 		if err != nil {
+			jww.ERROR.Printf("Error parsing page meta data for %s", page.FileName)
+			jww.ERROR.Println(err)
 			return err
 		}
-
 		if err = page.update(meta); err != nil {
 			return err
 		}
-
 	}
-	page.rawContent = p.Content()
+
+	page.rawContent = psr.Content()
 	page.setSummary()
 
 	return nil
 }
 
-func (p *Page) ProcessShortcodes(t bundle.Template) {
+func (page *Page) SetSourceContent(content []byte) {
+	page.sourceContent = content
+}
+
+func (page *Page) SetSourceMetaData(in interface{}, mark rune) (err error) {
+	by, err := parser.InterfaceToFrontMatter(in, mark)
+	if err != nil {
+		return err
+	}
+	by = append(by, '\n')
+
+	page.sourceFrontmatter = by
+
+	return nil
+}
+
+func (page *Page) SafeSaveSourceAs(path string) error {
+	return page.saveSourceAs(path, true)
+}
+
+func (page *Page) SaveSourceAs(path string) error {
+	return page.saveSourceAs(path, false)
+}
+
+func (page *Page) saveSourceAs(path string, safe bool) error {
+	b := new(bytes.Buffer)
+	b.Write(page.sourceFrontmatter)
+	b.Write(page.sourceContent)
+
+	err := page.saveSource(b.Bytes(), path, safe)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (page *Page) saveSource(by []byte, inpath string, safe bool) (err error) {
+	if !path.IsAbs(inpath) {
+		inpath = helpers.AbsPathify(inpath)
+	}
+	jww.INFO.Println("creating", inpath)
+
+	if safe {
+		err = helpers.SafeWriteToDisk(inpath, bytes.NewReader(by))
+	} else {
+		err = helpers.WriteToDisk(inpath, bytes.NewReader(by))
+	}
+	if err != nil {
+		return
+	}
+	return nil
+}
+
+func (page *Page) SaveSource() error {
+	return page.SaveSourceAs(page.FullFilePath())
+}
+
+func (p *Page) ProcessShortcodes(t Template) {
 	p.rawContent = []byte(ShortcodesHandle(string(p.rawContent), p, t))
 	p.Summary = template.HTML(ShortcodesHandle(string(p.Summary), p, t))
 }
@@ -621,6 +720,10 @@ func ReaderToBytes(lines io.Reader) []byte {
 	b := new(bytes.Buffer)
 	b.ReadFrom(lines)
 	return b.Bytes()
+}
+
+func (p *Page) FullFilePath() string {
+	return path.Join(p.Dir, p.FileName)
 }
 
 func (p *Page) TargetPath() (outfile string) {

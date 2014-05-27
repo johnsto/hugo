@@ -2,10 +2,12 @@
 title: "Configuring Hugo"
 date: "2013-07-01"
 aliases: ["/doc/configuration/"]
-groups: ['gettingStarted']
 linktitle: "Configuration"
-groups_weight: 40
+weight: 40
 notoc: true
+menu:
+  main:
+    parent: 'getting started'
 ---
 
 The directory structure and templates provide the majority of the
@@ -21,36 +23,33 @@ then look for a `config.json` file, followed by a `config.toml` file.
 ## Examples
 
 The following is an example of a yaml config file with the default values:
-{{% highlight yaml %}}
----
-contentdir: "content"
-layoutdir: "layouts"
-publishdir: "public"
-builddrafts: false
-indexes:
-   category: "categories"
-   tag: "tags"
-baseurl: "http://yoursite.example.com/"
-canonifyurls: true
-...
-{{% /highlight %}}
+
+    ---
+    contentdir: "content"
+    layoutdir: "layouts"
+    publishdir: "public"
+    builddrafts: false
+    indexes:
+       category: "categories"
+       tag: "tags"
+    baseurl: "http://yoursite.example.com/"
+    canonifyurls: true
+    ...
 
 The following is an example of a json config file with the default values:
 
-{{% highlight json %}}
-{
-    "contentdir": "content",
-    "layoutdir": "layouts",
-    "publishdir": "public",
-    "builddrafts": false,
-    "indexes": {
-       "category": "categories",
-       "tag": "tags"
-    },
-    "baseurl": "http://yoursite.example.com/",
-    "canonifyurls": true
-}
-{{% /highlight %}}
+    {
+        "contentdir": "content",
+        "layoutdir": "layouts",
+        "publishdir": "public",
+        "builddrafts": false,
+        "indexes": {
+           "category": "categories",
+           "tag": "tags"
+        },
+        "baseurl": "http://yoursite.example.com/",
+        "canonifyurls": true
+    }
 
 The following is an example of a toml config file with the default values:
 
@@ -66,19 +65,17 @@ The following is an example of a toml config file with the default values:
 
 Here is a yaml configuration file which sets a few more options
 
-{{% highlight yaml %}}
----
-baseurl: "http://yoursite.example.com/"
-title: "Yoyodyne Widget Blogging"
-permalinks:
-  post: /:year/:month/:title/
-params:
-  Subtitle: "Spinning the cogs in the widgets"
-  AuthorName: "John Doe"
-  GitHubUser: "spf13"
-  ListOfFoo:
-    - "foo1"
-    - "foo2"
-  SidebarRecentLimit: 5
-...
-{{% /highlight %}}
+    ---
+    baseurl: "http://yoursite.example.com/"
+    title: "Yoyodyne Widget Blogging"
+    permalinks:
+      post: /:year/:month/:title/
+    params:
+      Subtitle: "Spinning the cogs in the widgets"
+      AuthorName: "John Doe"
+      GitHubUser: "spf13"
+      ListOfFoo:
+        - "foo1"
+        - "foo2"
+      SidebarRecentLimit: 5
+    ...

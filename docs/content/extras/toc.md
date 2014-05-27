@@ -1,18 +1,20 @@
 ---
 title: "Table of Contents"
 date: "2013-07-09"
-groups: ["extras"]
-groups_weight: 70
+weight: 70
+menu:
+  main:
+    parent: 'extras'
 ---
 
 Hugo will automatically parse the markdown for your content and create
 a Table of Contents you can use to guide readers to the sections within
-your content. 
+your content.
 
 ## Usage
 
 Simply create content like you normally would with the appropriate
-headers. 
+headers.
 
 Hugo will take this markdown and create a table of contents stored in the
 [content variable](/layout/variables) .TableOfContents

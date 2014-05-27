@@ -2,9 +2,11 @@
 title: "Using Hugo"
 date: "2013-07-01"
 aliases: ["/doc/usage/"]
-groups: ['gettingStarted']
-groups_weight: 30
+weight: 30
 notoc: true
+menu:
+  main:
+    parent: 'getting started'
 ---
 
 Make sure either hugo is in your path or provide a path to it.
@@ -61,7 +63,7 @@ your browser to view the changes.**
     $ hugo -s ~/mysite --watch
        28 pages created
        0 tags index created
-       in 38 ms
+       in 18 ms
        Watching for changes in /Users/spf13/Code/hugo/docs/content
        Press ctrl+c to stop
 
@@ -73,5 +75,5 @@ Hugo can even run a server and create your site at the same time!
        Press ctrl+c to stop
        28 pages created
        0 tags created
-       in 28 ms
+       in 18 ms
 

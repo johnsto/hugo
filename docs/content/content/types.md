@@ -2,15 +2,16 @@
 title: "Content Types"
 date: "2013-07-01"
 linktitle: "Types"
-groups: ['content']
-groups_weight: 30
+menu:
+    main:
+        parent: 'content'
+weight: 30
 ---
 
 Hugo has full support for multiple content types each with its own set
 of meta data and template. A good example of when multiple types are
 needed is to look at Tumblr. A piece of content could be a photo, quote
 or post, each with different meta data and rendered differently.
-
 
 ## Defining a content type
 
@@ -47,6 +48,3 @@ this then each new piece of content you place into a section will automatically
 inherit the type.
 
 Alternatively you can set the type in the meta data under the key "type".
-
-
-
