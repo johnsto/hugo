@@ -44,6 +44,7 @@ type Page struct {
 	Params            map[string]interface{}
 	contentType       string
 	Draft             bool
+	PublishDate       time.Time
 	Aliases           []string
 	Tmpl              Template
 	Markup            string
@@ -84,6 +85,14 @@ func (p *Page) Plain() string {
 		p.plain = helpers.StripHTML(StripShortcodes(string(p.renderBytes(p.rawContent))))
 	}
 	return p.plain
+}
+
+func (p *Page) IsNode() bool {
+	return false
+}
+
+func (p *Page) IsPage() bool {
+	return true
 }
 
 func (p *Page) setSummary() {
@@ -191,11 +200,21 @@ func (page *Page) Layout(l ...string) []string {
 
 func layouts(types string, layout string) (layouts []string) {
 	t := strings.Split(types, "/")
+
+	// Add type/layout.html
 	for i := range t {
 		search := t[:len(t)-i]
 		layouts = append(layouts, fmt.Sprintf("%s/%s.html", strings.ToLower(path.Join(search...)), layout))
 	}
-	layouts = append(layouts, fmt.Sprintf("%s.html", layout))
+
+	// Add _default/layout.html
+	layouts = append(layouts, fmt.Sprintf("_default/%s.html", layout))
+
+	// Add theme/type/layout.html & theme/_default/layout.html
+	for _, l := range layouts {
+		layouts = append(layouts, "theme/"+l)
+	}
+
 	return
 }
 
@@ -278,6 +297,26 @@ func (p *Page) LinkTitle() string {
 	}
 }
 
+func (page *Page) ShouldBuild() bool {
+	if viper.GetBool("BuildFuture") || page.PublishDate.IsZero() || page.PublishDate.Before(time.Now()) {
+		if viper.GetBool("BuildDrafts") || !page.Draft {
+			return true
+		}
+	}
+	return false
+}
+
+func (page *Page) IsDraft() bool {
+	return page.Draft
+}
+
+func (page *Page) IsFuture() bool {
+	if page.PublishDate.Before(time.Now()) {
+		return false
+	}
+	return true
+}
+
 func (p *Page) Permalink() (string, error) {
 	link, err := p.permalink()
 	if err != nil {
@@ -325,8 +364,10 @@ func (page *Page) update(f interface{}) error {
 			page.contentType = cast.ToString(v)
 		case "keywords":
 			page.Keywords = cast.ToStringSlice(v)
-		case "date", "pubdate":
+		case "date":
 			page.Date = cast.ToTime(v)
+		case "publishdate", "pubdate":
+			page.PublishDate = cast.ToTime(v)
 		case "draft":
 			page.Draft = cast.ToBool(v)
 		case "layout":
@@ -488,19 +529,7 @@ func (p *Page) Render(layout ...string) template.HTML {
 		curLayout = layout[0]
 	}
 
-	return bytesToHTML(p.ExecuteTemplate(curLayout).Bytes())
-}
-
-func (p *Page) ExecuteTemplate(layout string) *bytes.Buffer {
-	l := p.Layout(layout)
-	buffer := new(bytes.Buffer)
-	for _, layout := range l {
-		if p.Tmpl.Lookup(layout) != nil {
-			p.Tmpl.ExecuteTemplate(buffer, layout, p)
-			break
-		}
-	}
-	return buffer
+	return ExecuteTemplateToHTML(p, p.Layout(curLayout)...)
 }
 
 func (page *Page) guessMarkupType() string {
@@ -646,6 +675,7 @@ func markdownRender(content []byte) []byte {
 	htmlFlags |= blackfriday.HTML_USE_SMARTYPANTS
 	htmlFlags |= blackfriday.HTML_SMARTYPANTS_FRACTIONS
 	htmlFlags |= blackfriday.HTML_SMARTYPANTS_LATEX_DASHES
+	htmlFlags |= blackfriday.HTML_FOOTNOTE_RETURN_LINKS
 	renderer := blackfriday.HtmlRenderer(htmlFlags, "", "")
 
 	extensions := 0
@@ -656,6 +686,7 @@ func markdownRender(content []byte) []byte {
 	extensions |= blackfriday.EXTENSION_STRIKETHROUGH
 	extensions |= blackfriday.EXTENSION_SPACE_HEADERS
 	extensions |= blackfriday.EXTENSION_HEADER_IDS
+	extensions |= blackfriday.EXTENSION_FOOTNOTES
 
 	return blackfriday.Markdown(content, renderer, extensions)
 }
@@ -667,6 +698,7 @@ func markdownRenderWithTOC(content []byte) []byte {
 	htmlFlags |= blackfriday.HTML_USE_SMARTYPANTS
 	htmlFlags |= blackfriday.HTML_SMARTYPANTS_FRACTIONS
 	htmlFlags |= blackfriday.HTML_SMARTYPANTS_LATEX_DASHES
+	htmlFlags |= blackfriday.HTML_FOOTNOTE_RETURN_LINKS
 	renderer := blackfriday.HtmlRenderer(htmlFlags, "", "")
 
 	extensions := 0
@@ -677,6 +709,7 @@ func markdownRenderWithTOC(content []byte) []byte {
 	extensions |= blackfriday.EXTENSION_STRIKETHROUGH
 	extensions |= blackfriday.EXTENSION_SPACE_HEADERS
 	extensions |= blackfriday.EXTENSION_HEADER_IDS
+	extensions |= blackfriday.EXTENSION_FOOTNOTES
 
 	return blackfriday.Markdown(content, renderer, extensions)
 }

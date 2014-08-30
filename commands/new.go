@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/hugo/helpers"
 	"github.com/spf13/hugo/parser"
 	jww "github.com/spf13/jwalterweatherman"
+	"github.com/spf13/viper"
 )
 
 var siteType string
@@ -33,6 +34,7 @@ var contentFrontMatter string
 
 func init() {
 	newSiteCmd.Flags().StringVarP(&configFormat, "format", "f", "toml", "config & frontmatter format")
+	newCmd.Flags().StringVarP(&configFormat, "format", "f", "toml", "frontmatter format")
 	newCmd.Flags().StringVarP(&contentType, "kind", "k", "", "Content type to create")
 	newCmd.AddCommand(newSiteCmd)
 	newCmd.AddCommand(newThemeCmd)
@@ -73,6 +75,10 @@ as you see fit.
 func NewContent(cmd *cobra.Command, args []string) {
 	InitializeConfig()
 
+	if cmd.Flags().Lookup("format").Changed {
+		viper.Set("MetaDataFormat", configFormat)
+	}
+
 	if len(args) < 1 {
 		cmd.Usage()
 		jww.FATAL.Fatalln("path needs to be provided")
@@ -110,7 +116,12 @@ func NewSite(cmd *cobra.Command, args []string) {
 	}
 
 	if x, _ := helpers.Exists(createpath); x {
-		jww.FATAL.Fatalln(createpath, "already exists")
+		y, _ := helpers.IsDir(createpath)
+		if z, _ := helpers.IsEmpty(createpath); y && z {
+			jww.INFO.Println(createpath, "already exists and is empty")
+		} else {
+			jww.FATAL.Fatalln(createpath, "already exists and is not empty")
+		}
 	}
 
 	mkdir(createpath, "layouts")
@@ -137,14 +148,14 @@ func NewTheme(cmd *cobra.Command, args []string) {
 	}
 
 	mkdir(createpath, "layouts", "_default")
-	mkdir(createpath, "layouts", "chrome")
+	mkdir(createpath, "layouts", "partials")
 
 	touchFile(createpath, "layouts", "index.html")
 	touchFile(createpath, "layouts", "_default", "list.html")
 	touchFile(createpath, "layouts", "_default", "single.html")
 
-	touchFile(createpath, "layouts", "chrome", "header.html")
-	touchFile(createpath, "layouts", "chrome", "footer.html")
+	touchFile(createpath, "layouts", "partials", "header.html")
+	touchFile(createpath, "layouts", "partials", "footer.html")
 
 	mkdir(createpath, "archetypes")
 	touchFile(createpath, "archetypes", "default.md")

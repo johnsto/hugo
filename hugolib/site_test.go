@@ -219,6 +219,66 @@ func TestTargetPath(t *testing.T) {
 	}
 }
 
+func TestDraftAndFutureRender(t *testing.T) {
+	files := make(map[string][]byte)
+	target := &target.InMemoryTarget{Files: files}
+	sources := []source.ByteSource{
+		{"sect/doc1.md", []byte("---\ntitle: doc1\ndraft: true\npublishdate: \"2414-05-29\"\n---\n# doc1\n*some content*"), "sect"},
+		{"sect/doc2.md", []byte("---\ntitle: doc2\ndraft: true\npublishdate: \"2012-05-29\"\n---\n# doc2\n*some content*"), "sect"},
+		{"sect/doc3.md", []byte("---\ntitle: doc3\ndraft: false\npublishdate: \"2414-05-29\"\n---\n# doc3\n*some content*"), "sect"},
+		{"sect/doc4.md", []byte("---\ntitle: doc4\ndraft: false\npublishdate: \"2012-05-29\"\n---\n# doc4\n*some content*"), "sect"},
+	}
+
+	siteSetup := func() *Site {
+		s := &Site{
+			Target: target,
+			Source: &source.InMemorySource{ByteSource: sources},
+		}
+
+		s.initializeSiteInfo()
+
+		if err := s.CreatePages(); err != nil {
+			t.Fatalf("Unable to create pages: %s", err)
+		}
+		return s
+	}
+
+	viper.Set("baseurl", "http://auth/bub")
+
+	// Testing Defaults.. Only draft:true and publishDate in the past should be rendered
+	s := siteSetup()
+	if len(s.Pages) != 1 {
+		t.Fatal("Draft or Future dated content published unexpectedly")
+	}
+
+	// only publishDate in the past should be rendered
+	viper.Set("BuildDrafts", true)
+	s = siteSetup()
+	if len(s.Pages) != 2 {
+		t.Fatal("Future Dated Posts published unexpectedly")
+	}
+
+	//  drafts should not be rendered, but all dates should
+	viper.Set("BuildDrafts", false)
+	viper.Set("BuildFuture", true)
+	s = siteSetup()
+	if len(s.Pages) != 2 {
+		t.Fatal("Draft posts published unexpectedly")
+	}
+
+	// all 4 should be included
+	viper.Set("BuildDrafts", true)
+	viper.Set("BuildFuture", true)
+	s = siteSetup()
+	if len(s.Pages) != 4 {
+		t.Fatal("Drafts or Future posts not included as expected")
+	}
+
+	//setting defaults back
+	viper.Set("BuildDrafts", false)
+	viper.Set("BuildFuture", false)
+}
+
 func TestSkipRender(t *testing.T) {
 	files := make(map[string][]byte)
 	target := &target.InMemoryTarget{Files: files}
@@ -420,6 +480,73 @@ func TestOrderedPages(t *testing.T) {
 	rbylength := bylength.Reverse()
 	if rbylength[0].Title != "Four" {
 		t.Errorf("Pages in unexpected order. First should be '%s', got '%s'", "Four", rbylength[0].Title)
+	}
+}
+
+var GROUPED_SOURCES = []source.ByteSource{
+	{"sect1/doc1.md", WEIGHTED_PAGE_1, "sect1"},
+	{"sect1/doc2.md", WEIGHTED_PAGE_2, "sect1"},
+	{"sect2/doc3.md", WEIGHTED_PAGE_3, "sect2"},
+	{"sect3/doc4.md", WEIGHTED_PAGE_4, "sect3"},
+}
+
+func TestGroupedPages(t *testing.T) {
+	files := make(map[string][]byte)
+	target := &target.InMemoryTarget{Files: files}
+
+	viper.Set("baseurl", "http://auth/bub")
+	s := &Site{
+		Target: target,
+		Source: &source.InMemorySource{ByteSource: GROUPED_SOURCES},
+	}
+	s.initializeSiteInfo()
+
+	if err := s.CreatePages(); err != nil {
+		t.Fatalf("Unable to create pages: %s", err)
+	}
+
+	if err := s.BuildSiteMeta(); err != nil {
+		t.Fatalf("Unable to build site metadata: %s", err)
+	}
+
+	rbysection, err := s.Pages.GroupBy("Section", "desc")
+	if err != nil {
+		t.Fatalf("Unable to make PageGroup array: %s", err)
+	}
+	if rbysection[0].Key != "sect3" {
+		t.Errorf("PageGroup array in unexpected order. First group key should be '%s', got '%s'", "sect3", rbysection[0].Key)
+	}
+	if rbysection[1].Key != "sect2" {
+		t.Errorf("PageGroup array in unexpected order. Second group key should be '%s', got '%s'", "sect2", rbysection[1].Key)
+	}
+	if rbysection[2].Key != "sect1" {
+		t.Errorf("PageGroup array in unexpected order. Third group key should be '%s', got '%s'", "sect1", rbysection[2].Key)
+	}
+	if rbysection[0].Pages[0].Title != "Four" {
+		t.Errorf("PageGroup has an unexpected page. First group's pages should have '%s', got '%s'", "Four", rbysection[0].Pages[0].Title)
+	}
+	if len(rbysection[2].Pages) != 2 {
+		t.Errorf("PageGroup has unexpected number of pages. Third group should have '%d' pages, got '%d' pages", 2, len(rbysection[2].Pages))
+	}
+
+	bydate, err := s.Pages.GroupByDate("2006-01", "asc")
+	if err != nil {
+		t.Fatalf("Unable to make PageGroup array: %s", err)
+	}
+	if bydate[0].Key != "2008-01" {
+		t.Errorf("PageGroup array in unexpected order. First group key should be '%s', got '%s'", "2008-01", bydate[0].Key)
+	}
+	if bydate[1].Key != "2012-01" {
+		t.Errorf("PageGroup array in unexpected order. Second group key should be '%s', got '%s'", "2012-01", bydate[1].Key)
+	}
+	if bydate[2].Key != "2012-04" {
+		t.Errorf("PageGroup array in unexpected order. Third group key should be '%s', got '%s'", "2012-04", bydate[2].Key)
+	}
+	if bydate[2].Pages[0].Title != "Three" {
+		t.Errorf("PageGroup has an unexpected page. Third group's pages should have '%s', got '%s'", "Three", bydate[2].Pages[0].Title)
+	}
+	if len(bydate[0].Pages) != 2 {
+		t.Errorf("PageGroup has unexpected number of pages. First group should have '%d' pages, got '%d' pages", 2, len(bydate[2].Pages))
 	}
 }
 

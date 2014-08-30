@@ -1,10 +1,14 @@
 ---
-title: "Highlighting"
-date: "2013-07-01"
-weight: 15
+aliases:
+- /extras/highlight/
+date: 2013-07-01
 menu:
   main:
-    parent: 'extras'
+    parent: extras
+next: /extras/toc
+prev: /extras/shortcodes
+title: Syntax Highlighting
+weight: 50
 ---
 
 Hugo provides the ability for you to highlight source code in two different

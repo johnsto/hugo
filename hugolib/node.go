@@ -20,7 +20,7 @@ import (
 
 type Node struct {
 	RSSLink template.HTML
-	Site    SiteInfo
+	Site    *SiteInfo
 	//	layout      string
 	Data        map[string]interface{}
 	Title       string
@@ -45,6 +45,14 @@ func (n *Node) IsMenuCurrent(menu string, me *MenuEntry) bool {
 
 func (n *Node) RSSlink() template.HTML {
 	return n.RSSLink
+}
+
+func (n *Node) IsNode() bool {
+	return true
+}
+
+func (n *Node) IsPage() bool {
+	return !n.IsNode()
 }
 
 type UrlPath struct {

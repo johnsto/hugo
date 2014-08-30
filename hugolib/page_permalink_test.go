@@ -18,11 +18,11 @@ func TestPermalink(t *testing.T) {
 		expectedAbs string
 		expectedRel string
 	}{
-		{"x/y/z/boofar.md", "x/y/z", "", "", "", false, "/x/y/z/boofar", "/x/y/z/boofar"},
-		{"x/y/z/boofar.md", "x/y/z/", "", "", "", false, "/x/y/z/boofar", "/x/y/z/boofar"},
-		{"x/y/z/boofar.md", "x/y/z/", "", "boofar", "", false, "/x/y/z/boofar", "/x/y/z/boofar"},
-		{"x/y/z/boofar.md", "x/y/z", "http://barnew/", "", "", false, "http://barnew/x/y/z/boofar", "/x/y/z/boofar"},
-		{"x/y/z/boofar.md", "x/y/z/", "http://barnew/", "boofar", "", false, "http://barnew/x/y/z/boofar", "/x/y/z/boofar"},
+		{"x/y/z/boofar.md", "x/y/z", "", "", "", false, "/x/y/z/boofar/", "/x/y/z/boofar/"},
+		{"x/y/z/boofar.md", "x/y/z/", "", "", "", false, "/x/y/z/boofar/", "/x/y/z/boofar/"},
+		{"x/y/z/boofar.md", "x/y/z/", "", "boofar", "", false, "/x/y/z/boofar/", "/x/y/z/boofar/"},
+		{"x/y/z/boofar.md", "x/y/z", "http://barnew/", "", "", false, "http://barnew/x/y/z/boofar/", "/x/y/z/boofar/"},
+		{"x/y/z/boofar.md", "x/y/z/", "http://barnew/", "boofar", "", false, "http://barnew/x/y/z/boofar/", "/x/y/z/boofar/"},
 		{"x/y/z/boofar.md", "x/y/z", "", "", "", true, "/x/y/z/boofar.html", "/x/y/z/boofar.html"},
 		{"x/y/z/boofar.md", "x/y/z/", "", "", "", true, "/x/y/z/boofar.html", "/x/y/z/boofar.html"},
 		{"x/y/z/boofar.md", "x/y/z/", "", "boofar", "", true, "/x/y/z/boofar.html", "/x/y/z/boofar.html"},
@@ -33,7 +33,7 @@ func TestPermalink(t *testing.T) {
 		{"x/y/z/boofar.md", "x/y/z", "", "", "/z/y/q/", false, "/z/y/q/", "/z/y/q/"},
 	}
 
-	for _, test := range tests {
+	for i, test := range tests {
 		viper.Set("uglyurls", test.uglyurls)
 		p := &Page{
 			Node: Node{
@@ -41,7 +41,7 @@ func TestPermalink(t *testing.T) {
 					Section: "z",
 					Url:     test.url,
 				},
-				Site: SiteInfo{
+				Site: &SiteInfo{
 					BaseUrl: test.base,
 				},
 			},
@@ -56,22 +56,22 @@ func TestPermalink(t *testing.T) {
 
 		u, err := p.Permalink()
 		if err != nil {
-			t.Errorf("Unable to process permalink: %s", err)
+			t.Errorf("Test %d: Unable to process permalink: %s", i, err)
 		}
 
 		expected := test.expectedAbs
 		if u != expected {
-			t.Errorf("Expected abs url: %s, got: %s", expected, u)
+			t.Errorf("Test %d: Expected abs url: %s, got: %s", i, expected, u)
 		}
 
 		u, err = p.RelPermalink()
 		if err != nil {
-			t.Errorf("Unable to process permalink: %s", err)
+			t.Errorf("Test %d: Unable to process permalink: %s", i, err)
 		}
 
 		expected = test.expectedRel
 		if u != expected {
-			t.Errorf("Expected abs url: %s, got: %s", expected, u)
+			t.Errorf("Test %d: Expected abs url: %s, got: %s", i, expected, u)
 		}
 	}
 }

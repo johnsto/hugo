@@ -19,6 +19,7 @@ import (
 	"html/template"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -56,26 +57,29 @@ var DefaultTimer *nitro.B
 //
 // 5. The entire collection of files is written to disk.
 type Site struct {
-	Pages      Pages
-	Tmpl       Template
-	Taxonomies TaxonomyList
-	Source     source.Input
-	Sections   Taxonomy
-	Info       SiteInfo
-	Shortcodes map[string]ShortcodeFunc
-	Menus      Menus
-	timer      *nitro.B
-	Target     target.Output
-	Alias      target.AliasPublisher
-	Completed  chan bool
-	RunMode    runmode
-	params     map[string]interface{}
+	Pages       Pages
+	Tmpl        Template
+	Taxonomies  TaxonomyList
+	Source      source.Input
+	Sections    Taxonomy
+	Info        SiteInfo
+	Shortcodes  map[string]ShortcodeFunc
+	Menus       Menus
+	timer       *nitro.B
+	Target      target.Output
+	Alias       target.AliasPublisher
+	Completed   chan bool
+	RunMode     runmode
+	params      map[string]interface{}
+	draftCount  int
+	futureCount int
 }
 
 type SiteInfo struct {
 	BaseUrl         template.URL
 	Taxonomies      TaxonomyList
 	Indexes         *TaxonomyList // legacy, should be identical to Taxonomies
+	Sections        Taxonomy
 	Recent          *Pages
 	Menus           *Menus
 	Title           string
@@ -260,10 +264,7 @@ func (s *Site) initialize() (err error) {
 }
 
 func (s *Site) initializeSiteInfo() {
-	params, ok := viper.Get("Params").(map[string]interface{})
-	if !ok {
-		params = make(map[string]interface{})
-	}
+	params := viper.GetStringMap("Params")
 
 	permalinks := make(PermalinkOverrides)
 	for k, v := range viper.GetStringMapString("Permalinks") {
@@ -311,52 +312,107 @@ func (s *Site) checkDirectories() (err error) {
 	return
 }
 
-func (s *Site) CreatePages() (err error) {
+type pageRenderResult struct {
+	page *Page
+	err  error
+}
+
+func (s *Site) CreatePages() error {
 	if s.Source == nil {
 		panic(fmt.Sprintf("s.Source not set %s", s.absContentDir()))
 	}
 	if len(s.Source.Files()) < 1 {
-		return fmt.Errorf("No source files found in %s", s.absContentDir())
+		return nil
 	}
 
-	var wg sync.WaitGroup
-	for _, fi := range s.Source.Files() {
+	files := s.Source.Files()
+
+	results := make(chan pageRenderResult)
+	input := make(chan *source.File)
+
+	procs := getGoMaxProcs()
+
+	wg := &sync.WaitGroup{}
+
+	for i := 0; i < procs*4; i++ {
 		wg.Add(1)
-		go func(file *source.File) (err error) {
-			defer wg.Done()
-
-			page, err := NewPage(file.LogicalName)
-			if err != nil {
-				return err
-			}
-			err = page.ReadFrom(file.Contents)
-			if err != nil {
-				return err
-			}
-			page.Site = s.Info
-			page.Tmpl = s.Tmpl
-			page.Section = file.Section
-			page.Dir = file.Dir
-
-			//Handling short codes prior to Conversion to HTML
-			page.ProcessShortcodes(s.Tmpl)
-
-			err = page.Convert()
-			if err != nil {
-				return err
-			}
-
-			if viper.GetBool("BuildDrafts") || !page.Draft {
-				s.Pages = append(s.Pages, page)
-			}
-
-			return
-		}(fi)
+		go pageRenderer(s, input, results, wg)
 	}
+
+	errs := make(chan error)
+
+	// we can only have exactly one result collator, since it makes changes that
+	// must be synchronized.
+	go resultCollator(s, results, errs)
+
+	for _, fi := range files {
+		input <- fi
+	}
+
+	close(input)
 
 	wg.Wait()
+
+	close(results)
+
+	return <-errs
+}
+
+func pageRenderer(s *Site, input <-chan *source.File, results chan<- pageRenderResult, wg *sync.WaitGroup) {
+	for file := range input {
+		page, err := NewPage(file.LogicalName)
+		if err != nil {
+			results <- pageRenderResult{nil, err}
+			continue
+		}
+		err = page.ReadFrom(file.Contents)
+		if err != nil {
+			results <- pageRenderResult{nil, err}
+			continue
+		}
+		page.Site = &s.Info
+		page.Tmpl = s.Tmpl
+		page.Section = file.Section
+		page.Dir = file.Dir
+
+		//Handling short codes prior to Conversion to HTML
+		page.ProcessShortcodes(s.Tmpl)
+
+		err = page.Convert()
+		if err != nil {
+			results <- pageRenderResult{nil, err}
+			continue
+		}
+		results <- pageRenderResult{page, nil}
+	}
+	wg.Done()
+}
+
+func resultCollator(s *Site, results <-chan pageRenderResult, errs chan<- error) {
+	errMsgs := []string{}
+	for r := range results {
+		if r.err != nil {
+			errMsgs = append(errMsgs, r.err.Error())
+			continue
+		}
+
+		if r.page.ShouldBuild() {
+			s.Pages = append(s.Pages, r.page)
+		}
+
+		if r.page.IsDraft() {
+			s.draftCount += 1
+		}
+
+		if r.page.IsFuture() {
+			s.futureCount += 1
+		}
+	}
 	s.Pages.Sort()
-	return
+	if len(errMsgs) == 0 {
+		errs <- nil
+	}
+	errs <- fmt.Errorf("Errors rendering pages: %s", strings.Join(errMsgs, "\n"))
 }
 
 func (s *Site) BuildSiteMeta() (err error) {
@@ -498,6 +554,7 @@ func (s *Site) assembleTaxonomies() {
 
 	s.Info.Taxonomies = s.Taxonomies
 	s.Info.Indexes = &s.Taxonomies
+	s.Info.Sections = s.Sections
 }
 
 func (s *Site) assembleSections() {
@@ -686,7 +743,11 @@ func (s *Site) RenderListsOfTaxonomyTerms() (err error) {
 func (s *Site) RenderSectionLists() error {
 	for section, data := range s.Sections {
 		n := s.NewNode()
-		n.Title = strings.Title(inflect.Pluralize(section))
+		if viper.GetBool("PluralizeListTitles") {
+			n.Title = strings.Title(inflect.Pluralize(section))
+		} else {
+			n.Title = strings.Title(section)
+		}
 		s.setUrls(n, section)
 		n.Date = data[0].Page.Date
 		n.Data["Pages"] = data.Pages()
@@ -744,13 +805,23 @@ func (s *Site) RenderHomePage() error {
 		}
 	}
 
-	if a := s.Tmpl.Lookup("404.html"); a != nil {
-		n.Url = helpers.Urlize("404.html")
-		n.Title = "404 Page not found"
-		n.Permalink = s.permalink("404.html")
+	// Force `UglyUrls` option to force `404.html` file name
+	switch s.Target.(type) {
+	case *target.Filesystem:
+		if !s.Target.(*target.Filesystem).UglyUrls {
+			s.Target.(*target.Filesystem).UglyUrls = true
+			defer func() { s.Target.(*target.Filesystem).UglyUrls = false }()
+		}
+	}
 
-		layouts := []string{"404.html"}
-		return s.render(n, "404.html", s.appendThemeTemplates(layouts)...)
+	n.Url = helpers.Urlize("404.html")
+	n.Title = "404 Page not found"
+	n.Permalink = s.permalink("404.html")
+
+	nfLayouts := []string{"404.html"}
+	nfErr := s.render(n, "404.html", s.appendThemeTemplates(nfLayouts)...)
+	if nfErr != nil {
+		return nfErr
 	}
 
 	return nil
@@ -772,7 +843,7 @@ func (s *Site) RenderSitemap() error {
 
 	page := &Page{}
 	page.Date = s.Info.LastChange
-	page.Site = s.Info
+	page.Site = &s.Info
 	page.Url = "/"
 
 	pages = append(pages, page)
@@ -811,6 +882,8 @@ func (s *Site) RenderSitemap() error {
 }
 
 func (s *Site) Stats() {
+	jww.FEEDBACK.Println(s.draftStats())
+	jww.FEEDBACK.Println(s.futureStats())
 	jww.FEEDBACK.Printf("%d pages created \n", len(s.Pages))
 
 	taxonomies := viper.GetStringMapString("Taxonomies")
@@ -845,7 +918,7 @@ func (s *Site) PrettifyPath(in string) string {
 func (s *Site) NewNode() *Node {
 	return &Node{
 		Data: make(map[string]interface{}),
-		Site: s.Info,
+		Site: &s.Info,
 	}
 }
 
@@ -955,4 +1028,51 @@ func (s *Site) WriteAlias(path string, permalink template.HTML) (err error) {
 	jww.DEBUG.Println("alias created at", path)
 
 	return s.Alias.Publish(path, permalink)
+}
+
+func (s *Site) draftStats() string {
+	var msg string
+
+	switch s.draftCount {
+	case 0:
+		return "0 draft content "
+	case 1:
+		msg = "1 draft rendered "
+	default:
+		msg = fmt.Sprintf("%d drafts rendered", s.draftCount)
+	}
+
+	if viper.GetBool("BuildDrafts") {
+		return fmt.Sprintf("%d of ", s.draftCount) + msg
+	}
+
+	return "0 of " + msg
+}
+
+func (s *Site) futureStats() string {
+	var msg string
+
+	switch s.futureCount {
+	case 0:
+		return "0 future content "
+	case 1:
+		msg = "1 future rendered "
+	default:
+		msg = fmt.Sprintf("%d future rendered", s.draftCount)
+	}
+
+	if viper.GetBool("BuildFuture") {
+		return fmt.Sprintf("%d of ", s.futureCount) + msg
+	}
+
+	return "0 of " + msg
+}
+
+func getGoMaxProcs() int {
+	if gmp := os.Getenv("GOMAXPROCS"); gmp != "" {
+		if p, err := strconv.Atoi(gmp); err != nil {
+			return p
+		}
+	}
+	return 1
 }

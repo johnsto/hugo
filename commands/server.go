@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -36,8 +37,8 @@ var disableLiveReload bool
 
 var serverCmd = &cobra.Command{
 	Use:   "server",
-	Short: "Hugo runs it's own a webserver to render the files",
-	Long: `Hugo is able to run it's own high performance web server.
+	Short: "Hugo runs its own webserver to render the files",
+	Long: `Hugo is able to run its own high performance web server.
 Hugo will render all the files defined in the source directory and
 Serve them up.`,
 	//Run: server,
@@ -54,20 +55,12 @@ func init() {
 func server(cmd *cobra.Command, args []string) {
 	InitializeConfig()
 
-	if BaseUrl == "" {
-		BaseUrl = "http://localhost"
-	}
-
 	if cmd.Flags().Lookup("disableLiveReload").Changed {
 		viper.Set("DisableLiveReload", disableLiveReload)
 	}
 
 	if serverWatch {
 		viper.Set("Watch", true)
-	}
-
-	if !strings.HasPrefix(BaseUrl, "http://") {
-		BaseUrl = "http://" + BaseUrl
 	}
 
 	l, err := net.Listen("tcp", ":"+strconv.Itoa(serverPort))
@@ -83,11 +76,13 @@ func server(cmd *cobra.Command, args []string) {
 		serverPort = sp.Port
 	}
 
-	if serverAppend {
-		viper.Set("BaseUrl", strings.TrimSuffix(BaseUrl, "/")+":"+strconv.Itoa(serverPort))
-	} else {
-		viper.Set("BaseUrl", strings.TrimSuffix(BaseUrl, "/"))
+	viper.Set("port", serverPort)
+
+	BaseUrl, err := fixUrl(BaseUrl)
+	if err != nil {
+		jww.ERROR.Fatal(err)
 	}
+	viper.Set("BaseUrl", BaseUrl)
 
 	build(serverWatch)
 
@@ -108,10 +103,57 @@ func serve(port int) {
 	jww.FEEDBACK.Printf("Web Server is available at %s\n", viper.GetString("BaseUrl"))
 	fmt.Println("Press ctrl+c to stop")
 
-	http.Handle("/", http.FileServer(http.Dir(helpers.AbsPathify(viper.GetString("PublishDir")))))
-	err := http.ListenAndServe(":"+strconv.Itoa(port), nil)
+	fileserver := http.FileServer(http.Dir(helpers.AbsPathify(viper.GetString("PublishDir"))))
+
+	u, err := url.Parse(viper.GetString("BaseUrl"))
+	if err != nil {
+		jww.ERROR.Fatalf("Invalid BaseUrl: %s", err)
+	}
+	if u.Path == "" || u.Path == "/" {
+		http.Handle("/", fileserver)
+	} else {
+		http.Handle(u.Path+"/", http.StripPrefix(u.Path+"/", fileserver))
+	}
+
+	err = http.ListenAndServe(":"+strconv.Itoa(port), nil)
 	if err != nil {
 		jww.ERROR.Printf("Error: %s\n", err.Error())
 		os.Exit(1)
 	}
+}
+
+func fixUrl(s string) (string, error) {
+	useLocalhost := false
+	if s == "" {
+		s = viper.GetString("BaseUrl")
+		useLocalhost = true
+	}
+	if !strings.HasPrefix(s, "http://") {
+		s = "http://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return "", err
+	}
+
+	if serverAppend {
+		if useLocalhost {
+			u.Host = fmt.Sprintf("localhost:%d", serverPort)
+			return u.String(), nil
+		}
+		host := u.Host
+		if strings.Contains(host, ":") {
+			host, _, err = net.SplitHostPort(u.Host)
+			if err != nil {
+				return "", fmt.Errorf("Failed to split BaseUrl hostpost: %s", err)
+			}
+		}
+		u.Host = fmt.Sprintf("%s:%d", host, serverPort)
+		return u.String(), nil
+	}
+
+	if useLocalhost {
+		u.Host = "localhost"
+	}
+	return u.String(), nil
 }
