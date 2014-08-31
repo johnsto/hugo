@@ -9,6 +9,9 @@ menu:
 title: Release Notes
 weight: 10
 ---
+## Next release
+  * Added section Prev/Next pointers.
+=======
 
 ## Next release
   * Added section Prev/Next pointers.
